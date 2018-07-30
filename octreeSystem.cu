@@ -31,7 +31,7 @@ void octreeSystem::reset()
     octant parentOct;
     parentOct.index = 0;
     parentOct.octRect = parentRect;
-    parentOct.isBucket = false;
+    parentOct.isBucket = true;
     parentOct.containedParticlesIndices.clear();
 
     // Reserve enough space for a fixed number of octants. This is required since dynamically allocating the
@@ -53,7 +53,11 @@ void octreeSystem::makeOctree(particleSystem& pSystem)
     }
 
     // Divide the first octant
-    octantList[0].divide(octantList, pSystem, bucketCounter);
+    if (octantList[0].containedParticlesIndices.size() > MAX_PARTICLES_PER_BUCKET)
+    {
+        octantList[0].isBucket = false;
+        octantList[0].divide(octantList, pSystem, bucketCounter);
+    }
 }
 
 // Converts each bucket octant into a deviceOctant and sends it to the device.
@@ -67,7 +71,7 @@ deviceOctant* octreeSystem::sendToGPU()
         // The neighbour search radius for this octant should be roughly proportional to this octant's size.
         // This is because extremely large octants are likely in less dense areas and require a larger search radius, and vice versa
         // Note: hCell should be an overestimate rather than an underestimate for accurate SPH
-        float hCell = 20 * std::max(octantList[i].octRect.width, octantList[i].octRect.height);
+        float hCell = 2 * std::max(octantList[i].octRect.width, octantList[i].octRect.height);
         h_octantList[i].neibSearchRadius = hCell;
         h_octantList[i].id = i;
 
@@ -275,7 +279,7 @@ void octant::findNeibBuckets(std::vector<octant>& octantList, int currentIndex)
 {
     octant currentOct = octantList[currentIndex];
 
-    float hCell = 20 * std::max(octRect.width, octRect.height);
+    float hCell = 2 * std::max(octRect.width, octRect.height);
     bool near = octRect.withinDistance(currentOct.octRect, hCell);
     bool contains = octRect.contains(currentOct.octRect);
     bool containedBy = currentOct.octRect.contains(octRect);

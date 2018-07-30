@@ -10,6 +10,7 @@ particleSystem::particleSystem()
     mass = (float*)malloc(N*sizeof(float));
     smoothingLengths = (float*)malloc(N*sizeof(float));
     densities = (float*)malloc(N*sizeof(float));
+    pressureGradients = (float2*)malloc(N*sizeof(float2));
     octs = (int*)malloc(N*sizeof(int));
 
     // Allocate memory for particles on device
@@ -18,6 +19,7 @@ particleSystem::particleSystem()
     cudaMalloc((void**) &d_mass, N*sizeof(float));
     cudaMalloc((void**) &d_smoothingLengths, N*sizeof(float));
     cudaMalloc((void**) &d_densities, N*sizeof(float));
+    cudaMalloc((void**) &d_pressureGradients, N*sizeof(float2));
     cudaMalloc((void**) &d_octs, N*sizeof(int));
 }
 
@@ -30,6 +32,7 @@ particleSystem::~particleSystem()
     free(mass);
     free(smoothingLengths);
     free(densities);
+    free(pressureGradients);
     free(octs);
     // Free device memory
     cudaFree(d_pos);
@@ -37,6 +40,7 @@ particleSystem::~particleSystem()
     cudaFree(d_mass);
     cudaFree(d_smoothingLengths);
     cudaFree(d_densities);
+    cudaFree(d_pressureGradients);
     cudaFree(d_octs);
 }
 
@@ -44,22 +48,24 @@ void particleSystem::init()
 {
     // Use thrust to generate an array of random floats, of length N
     thrust::counting_iterator<int> counter(0);
-    thrust::device_vector<float> d_randomFloats(N*2);
-    thrust::transform(counter, counter + N*2, d_randomFloats.begin(), randPosFunctor());
+    thrust::device_vector<float> d_randomFloats(N * 6);
+    thrust::transform(counter, counter + N * 6 , d_randomFloats.begin(), randPosFunctor());
     thrust::host_vector<float> h_randomFloats = d_randomFloats;
 
     for (int i = 0; i < N; i++)
     {
         pos[i].x = h_randomFloats[i] * WIDTH;
         pos[i].y = h_randomFloats[N + i] * HEIGHT;
-        vel[i].x = 0.0f;
-        vel[i].y = 0.0f;
-        mass[i] = h_randomFloats[i] * 10.0f;
+        mass[i] = 3 + (h_randomFloats[2 * N + i] * 4.0f);
+        vel[i].x = h_randomFloats[3 * N + i] - 0.5f;
+        vel[i].y = h_randomFloats[4 * N + i] - 0.5f;
+        smoothingLengths[i] = 5.0f;
     }
 
     cudaMemcpy(d_pos, pos, N*sizeof(float4), cudaMemcpyHostToDevice);
     cudaMemcpy(d_vel, vel, N*sizeof(float3), cudaMemcpyHostToDevice);
     cudaMemcpy(d_mass, mass, N*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_smoothingLengths, smoothingLengths, N*sizeof(float), cudaMemcpyHostToDevice);
 }
 
 __global__ void kernelIntegrate(float4* pos, float3* vel, float dt)
@@ -128,5 +134,5 @@ __device__ float randPosFunctor::operator()(int idx)
     randomEng.discard(idx);
     // By multiplying two uniformly random real numbers, the results exponentially lean towards closer to 0 in the domain [0, 1]
     // This is ideal, since a non-uniform distribution represents astrophysical problems well.
-    return uniformRealDist(randomEng) * uniformRealDist(randomEng);
+    return uniformRealDist(randomEng) * ((UNIFORM_DISTRIBUTION) ? 1 : uniformRealDist(randomEng));
 }

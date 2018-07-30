@@ -12,6 +12,8 @@ struct displayHandler
     void drawCircle(float2 centre, float radius);
     void drawOct(octreeSystem& octSystem, int index);
     void fillOct(octreeSystem& octSystem, int index);
+    void drawSmoothingLenghs(particleSystem& pSystem);
     void drawParticle(particleSystem& pSystem, int index);
+    void fillCircle(GLfloat x, GLfloat y, GLfloat radius);
     void drawNeibRadius(octreeSystem& octSystem, particleSystem& pSystem, int bucketIndex);
 };

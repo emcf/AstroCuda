@@ -31,6 +31,9 @@ struct particleSystem
     float* densities;
     float* d_densities;
 
+    float2* pressureGradients;
+    float2* d_pressureGradients;
+
     // ID of containing octant
     int* octs;
     int* d_octs;

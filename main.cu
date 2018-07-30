@@ -17,7 +17,8 @@ void draw()
 {
     glClear(GL_COLOR_BUFFER_BIT);
     display.drawMortonCurve(octSystem);
-    for (int i = 0; i < octSystem.octantList.size(); i++)
+    display.drawSmoothingLenghs(pSystem);
+    for (int i = 0; i < octSystem.octCount; i++)
         display.drawOct(octSystem, i);
     for (int i = 0; i < N; i++)
         display.drawParticle(pSystem, i);
@@ -42,6 +43,10 @@ int main(int argc, char* argv[])
         sphSystem.computeDensity(octSystem, pSystem, d_octantList);
         octSystem.freeFromGPU();
         cudaMemcpy(pSystem.densities, pSystem.d_densities, N*sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(pSystem.smoothingLengths, pSystem.d_smoothingLengths, N*sizeof(float), cudaMemcpyDeviceToHost);
+
+        for (int i = 0; i < N; i++)
+            printf("%f %f\n", pSystem.smoothingLengths[i], pSystem.densities[i]);
 
         draw();
     }

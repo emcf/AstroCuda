@@ -3,6 +3,7 @@
 #include "octreeSystem.cuh"
 #include "simulationSettings.h"
 #include "displayHandler.cuh"
+#define PI 3.14159f
 
 void displayHandler::init()
 {
@@ -28,13 +29,15 @@ void displayHandler::init()
 void displayHandler::drawCircle(float2 centre, float radius)
 {
     glBegin(GL_LINE_LOOP);
-    glColor3f(0.3f, 0.3f, 0.3f);
-    // The amount of points drawn must scale with the radius so it looks smooth
-    float points = 5 * radius;
+    //glColor3f(0.3f, 0.3f, 0.3f);
+    glColor3f(20.0f / 255.0f, 20.0f / 255.0f, 20.0f / 255.0f);
+    // The amount of points drawn must scale with the radius so it looks smooth. Max is 100 to minimize lag
+    float points = PI * radius;
+    points = (points > 50) ? 50 : points;
 
     for (float i = 0; i < points; i++)
     {
-        float angle = 2.0f * 3.14159f * i / points;
+        float angle = 2.0f * PI * i / points;
         float x = radius * cosf(angle);
         float y = radius * sinf(angle);
         glVertex2f(x + centre.x, y + centre.y);
@@ -137,16 +140,33 @@ void displayHandler::fillOct(octreeSystem& octSystem, int index)
     }
 }
 
-// Fills a pixel at each particle's position
-void displayHandler::drawParticle(particleSystem& pSystem, int i)
+void displayHandler::drawSmoothingLenghs(particleSystem& pSystem)
 {
     if (DRAW_PARTICLES)
     {
-        glBegin(GL_POINTS);
-        typedef GLfloat point2[2];
-        glColor3f(pSystem.densities[i] * 10, 0.5f, 0.5f);
-        point2 particleDrawPoint = {pSystem.pos[i].x, pSystem.pos[i].y};
-        glVertex2fv(particleDrawPoint);
-        glEnd();
+        for (int i = 0; i < N; i++)
+        {
+            float2 pos;
+            pos.x = pSystem.pos[i].x;
+            pos.y = pSystem.pos[i].y;
+            drawCircle(pos, pSystem.smoothingLengths[i]);
+        }
     }
+}
+
+// Fills a pixel at each particle's position
+void displayHandler::drawParticle(particleSystem& pSystem, int i)
+{
+    glColor3f(pSystem.densities[i] * 10, 0.2f, 0.2f);
+    fillCircle(pSystem.pos[i].x, pSystem.pos[i].y, pSystem.mass[i] * 0.7f);
+}
+
+void displayHandler::fillCircle(GLfloat x, GLfloat y, GLfloat radius)
+{
+	int triangles = 10;
+	glBegin(GL_TRIANGLE_FAN);
+	glVertex2f(x, y);
+	for (int i = 0; i <= triangles; i++)
+		glVertex2f(x + (radius * cos(i * 2 * PI / triangles)), y + (radius * sin(i * 2 * PI / triangles)));
+	glEnd();
 }
