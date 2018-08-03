@@ -31,13 +31,6 @@ struct particleSystem
     float* densities;
     float* d_densities;
 
-    float2* pressureGradients;
-    float2* d_pressureGradients;
-
-    // ID of containing octant
-    int* octs;
-    int* d_octs;
-
     // Initiates position, velocity, and copies memory to GPU
     void init();
     // Euler integration on particle positions using CUDA kernel

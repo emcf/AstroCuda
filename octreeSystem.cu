@@ -73,7 +73,6 @@ deviceOctant* octreeSystem::sendToGPU()
         // Note: hCell should be an overestimate rather than an underestimate for accurate SPH
         float hCell = 2 * std::max(octantList[i].octRect.width, octantList[i].octRect.height);
         h_octantList[i].neibSearchRadius = hCell;
-        h_octantList[i].id = i;
 
         // Transfers info storing the # of contained particles as well as # of neib buckets for this bucket
         h_octantList[i].containedParticleCount = octantList[i].containedParticlesIndices.size();
@@ -181,41 +180,23 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
     // Assign particles to each new child oct
     for (int i = 0; i < containedParticlesIndices.size(); i++)
     {
-        float4 particle_i = pSystem.pos[containedParticlesIndices[i]];
-
-        bool withinTopHalf = particle_i.y > octRect.centre.y;
-        bool withinLeftHalf = particle_i.x < octRect.centre.x;
+        bool withinTopHalf =  pSystem.pos[containedParticlesIndices[i]].y > octRect.centre.y;
+        bool withinLeftHalf =  pSystem.pos[containedParticlesIndices[i]].x < octRect.centre.x;
 
         if (withinTopHalf && withinLeftHalf)
-        {
             topLeftChild.containedParticlesIndices.push_back(containedParticlesIndices[i]);
-        }
         else if (withinTopHalf)
-        {
             topRightChild.containedParticlesIndices.push_back(containedParticlesIndices[i]);
-        }
         else if (withinLeftHalf)
-        {
             bottomLeftChild.containedParticlesIndices.push_back(containedParticlesIndices[i]);
-        }
         else
-        {
             bottomRightChild.containedParticlesIndices.push_back(containedParticlesIndices[i]);
-        }
     }
-
-    // Add child octants to global octant list in the following order and partition them to create a z-order curve
 
     // Top left child
+    // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
     if (topLeftChild.containedParticlesIndices.size() <= MAX_PARTICLES_PER_BUCKET)
-    {
-        // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
         topLeftChild.bucketIndex = bucketCounter++;
-        for (int i = 0; i < topLeftChild.containedParticlesIndices.size(); i++)
-        {
-            pSystem.octs[topLeftChild.containedParticlesIndices[i]] = topLeftChild.bucketIndex;
-        }
-    }
     topLeftChild.index = octantList.size();
     childrenIndices[0] = topLeftChild.index;
     octantList.push_back(topLeftChild);
@@ -223,15 +204,9 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
         octantList[topLeftChild.index].divide(octantList, pSystem, bucketCounter);
 
     // Top right child
+    // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
     if (topRightChild.containedParticlesIndices.size() <= MAX_PARTICLES_PER_BUCKET)
-    {
-        // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
         topRightChild.bucketIndex = bucketCounter++;
-        for (int i = 0; i < topRightChild.containedParticlesIndices.size(); i++)
-        {
-            pSystem.octs[topRightChild.containedParticlesIndices[i]] = topRightChild.bucketIndex;
-        }
-    }
     topRightChild.index = octantList.size();
     childrenIndices[1] = topRightChild.index;
     octantList.push_back(topRightChild);
@@ -239,15 +214,9 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
         octantList[topRightChild.index].divide(octantList, pSystem, bucketCounter);
 
     // Bottom left child
+    // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
     if (bottomLeftChild.containedParticlesIndices.size() <= MAX_PARTICLES_PER_BUCKET)
-    {
-        // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
         bottomLeftChild.bucketIndex = bucketCounter++;
-        for (int i = 0; i < bottomLeftChild.containedParticlesIndices.size(); i++)
-        {
-            pSystem.octs[bottomLeftChild.containedParticlesIndices[i]] = bottomLeftChild.bucketIndex;
-        }
-    }
     bottomLeftChild.index = octantList.size();
     childrenIndices[2] = bottomLeftChild.index;
     octantList.push_back(bottomLeftChild);
@@ -255,15 +224,9 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
         octantList[bottomLeftChild.index].divide(octantList, pSystem, bucketCounter);
 
     // Bottom right child
+    // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
     if (bottomRightChild.containedParticlesIndices.size() <= MAX_PARTICLES_PER_BUCKET)
-    {
-        // If this child is a bucket, set its bucket index and assign this bucket index to its contained particles
         bottomRightChild.bucketIndex = bucketCounter++;
-        for (int i = 0; i < bottomRightChild.containedParticlesIndices.size(); i++)
-        {
-            pSystem.octs[bottomRightChild.containedParticlesIndices[i]] = bottomRightChild.bucketIndex;
-        }
-    }
     bottomRightChild.index = octantList.size();
     childrenIndices[3] = bottomRightChild.index;
     octantList.push_back(bottomRightChild);

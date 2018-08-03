@@ -10,8 +10,6 @@ particleSystem::particleSystem()
     mass = (float*)malloc(N*sizeof(float));
     smoothingLengths = (float*)malloc(N*sizeof(float));
     densities = (float*)malloc(N*sizeof(float));
-    pressureGradients = (float2*)malloc(N*sizeof(float2));
-    octs = (int*)malloc(N*sizeof(int));
 
     // Allocate memory for particles on device
     cudaMalloc((void**) &d_pos, N*sizeof(float4));
@@ -19,8 +17,6 @@ particleSystem::particleSystem()
     cudaMalloc((void**) &d_mass, N*sizeof(float));
     cudaMalloc((void**) &d_smoothingLengths, N*sizeof(float));
     cudaMalloc((void**) &d_densities, N*sizeof(float));
-    cudaMalloc((void**) &d_pressureGradients, N*sizeof(float2));
-    cudaMalloc((void**) &d_octs, N*sizeof(int));
 }
 
 // Destructor
@@ -32,16 +28,13 @@ particleSystem::~particleSystem()
     free(mass);
     free(smoothingLengths);
     free(densities);
-    free(pressureGradients);
-    free(octs);
+
     // Free device memory
     cudaFree(d_pos);
     cudaFree(d_vel);
     cudaFree(d_mass);
     cudaFree(d_smoothingLengths);
     cudaFree(d_densities);
-    cudaFree(d_pressureGradients);
-    cudaFree(d_octs);
 }
 
 void particleSystem::init()
@@ -57,9 +50,9 @@ void particleSystem::init()
         pos[i].x = h_randomFloats[i] * WIDTH;
         pos[i].y = h_randomFloats[N + i] * HEIGHT;
         mass[i] = 3 + (h_randomFloats[2 * N + i] * 4.0f);
-        vel[i].x = h_randomFloats[3 * N + i] - 0.5f;
-        vel[i].y = h_randomFloats[4 * N + i] - 0.5f;
-        smoothingLengths[i] = 5.0f;
+        vel[i].x = 0.0f; // h_randomFloats[3 * N + i] - 0.5f;
+        vel[i].y = 0.0f; // h_randomFloats[4 * N + i] - 0.5f;
+        smoothingLengths[i] = 20.0f;
     }
 
     cudaMemcpy(d_pos, pos, N*sizeof(float4), cudaMemcpyHostToDevice);

@@ -7,6 +7,7 @@
 #include "physicsSystemGPU.cuh"
 #include "displayHandler.cuh"
 #include <GL/glut.h>
+#include <time.h>
 
 static octreeSystem octSystem;
 static particleSystem pSystem;
@@ -22,6 +23,7 @@ void draw()
         display.drawOct(octSystem, i);
     for (int i = 0; i < N; i++)
         display.drawParticle(pSystem, i);
+
     glFlush();
 }
 
@@ -46,7 +48,7 @@ int main(int argc, char* argv[])
         cudaMemcpy(pSystem.smoothingLengths, pSystem.d_smoothingLengths, N*sizeof(float), cudaMemcpyDeviceToHost);
 
         for (int i = 0; i < N; i++)
-            printf("%f %f\n", pSystem.smoothingLengths[i], pSystem.densities[i]);
+            std::cout << pSystem.densities[i] << std::endl;
 
         draw();
     }

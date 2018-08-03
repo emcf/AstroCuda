@@ -10,7 +10,6 @@
 
 struct deviceOctant
 {
-    int id;
     float neibSearchRadius;
 
     // Note that this cannot exceed MAX_PARTICLES_PER_BUCKET

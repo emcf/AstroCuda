@@ -157,7 +157,7 @@ void displayHandler::drawSmoothingLenghs(particleSystem& pSystem)
 // Fills a pixel at each particle's position
 void displayHandler::drawParticle(particleSystem& pSystem, int i)
 {
-    glColor3f(pSystem.densities[i] * 10, 0.2f, 0.2f);
+    glColor3f(pSystem.densities[i] * 5, 0.2f, 0.2f);
     fillCircle(pSystem.pos[i].x, pSystem.pos[i].y, pSystem.mass[i] * 0.7f);
 }
 
