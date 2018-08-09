@@ -60,31 +60,72 @@ void octreeSystem::makeOctree(particleSystem& pSystem)
     }
 }
 
-// Converts each bucket octant into a deviceOctant and sends it to the device.
-deviceOctant* octreeSystem::sendToGPU()
+// Arranges the particles in pSystem into a morton curve to send to GPU
+void octreeSystem::arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
 {
-    // Allocate device octant on device and record their "meta data" (pointers) on the CPU
+    pSystem.h_deviceParticleList = new deviceParticle[N];
     h_octantList = new deviceOctant[octCount];
-    deviceOctant* d_octantList;
+
+    int MortonCounter = 0;
     for (int i = 0; i < octCount; i++)
     {
+        int containedParticlesCount = octantList[i].containedParticlesIndices.size();
+
         // The neighbour search radius for this octant should be roughly proportional to this octant's size.
         // This is because extremely large octants are likely in less dense areas and require a larger search radius, and vice versa
         // Note: hCell should be an overestimate rather than an underestimate for accurate SPH
-        float hCell = 2 * std::max(octantList[i].octRect.width, octantList[i].octRect.height);
+        float hCell = 2 * std::max(octantList[i].octRect.width, octantList[i].octRect.height) + 10;
         h_octantList[i].neibSearchRadius = hCell;
 
         // Transfers info storing the # of contained particles as well as # of neib buckets for this bucket
-        h_octantList[i].containedParticleCount = octantList[i].containedParticlesIndices.size();
+        h_octantList[i].containedParticleCount = containedParticlesCount;
         h_octantList[i].neibBucketCount = octantList[i].neibBucketIndices.size();
 
         // Allocate and transfer contained particle indices to the GPU
-        cudaMalloc((void**) &(h_octantList[i].d_containedParticleIndices), h_octantList[i].containedParticleCount * sizeof(int));
-        cudaMemcpy(h_octantList[i].d_containedParticleIndices, &(octantList[i].containedParticlesIndices[0]), h_octantList[i].containedParticleCount * sizeof(int), cudaMemcpyHostToDevice);
+        h_octantList[i].firstContainedParticleIdx = MortonCounter;
 
         // Allocate and transfer neib bucket indices to the GPU
         cudaMalloc((void**) &(h_octantList[i].d_neibBucketsIndices), h_octantList[i].neibBucketCount * sizeof(int));
         cudaMemcpy(h_octantList[i].d_neibBucketsIndices, &(octantList[i].neibBucketIndices[0]), h_octantList[i].neibBucketCount * sizeof(int), cudaMemcpyHostToDevice);
+
+        for (int j = 0; j < containedParticlesCount; j++)
+        {
+            // Convert particle info into congruent arrays
+            deviceParticle h_particle;
+            int particleIdx = octantList[i].containedParticlesIndices[j];
+            h_particle.particleData[0] = pSystem.pos[particleIdx].x;
+            h_particle.particleData[1] = pSystem.pos[particleIdx].y;
+            h_particle.particleData[2] = pSystem.pos[particleIdx].z;
+            h_particle.particleData[3] = particleIdx;
+            h_particle.particleData[4] = pSystem.prevpos[particleIdx].x;
+            h_particle.particleData[5] = pSystem.prevpos[particleIdx].y;
+            h_particle.particleData[6] = pSystem.prevpos[particleIdx].z;
+            h_particle.particleData[7] = pSystem.mass[particleIdx];
+            h_particle.particleData[8] = pSystem.smoothingLengths[particleIdx];
+            h_particle.particleData[9] = pSystem.densities[particleIdx];
+            h_particle.particleData[10] = pSystem.omegas[particleIdx];
+            h_particle.particleData[11] = pSystem.pressures[particleIdx];
+            pSystem.h_deviceParticleList[MortonCounter] = h_particle;
+            MortonCounter++;
+        }
+    }
+
+    // OctantList data is on GPU, now transfer the "meta data" to the GPU
+    cudaMemcpy(d_octantList, h_octantList, octCount*sizeof(deviceOctant), cudaMemcpyHostToDevice);
+    // Transfer rearranged particle data to GPU
+    cudaMemcpy(d_deviceParticleList, pSystem.h_deviceParticleList, N*sizeof(deviceParticle), cudaMemcpyHostToDevice);
+}
+
+// Converts each bucket octant into a deviceOctant and sends it to the device.
+/*deviceOctant* octreeSystem::sendToGPU()
+{
+    // Allocate device octant on device and record their "meta data" (pointers) on the CPU
+    h_octantList = new deviceOctant[octCount];
+    deviceOctant* d_octantList;
+
+    for (int i = 0; i < octCount; i++)
+    {
+
     }
 
     // OctantList data is on GPU, now transfer the "meta data" to the GPU
@@ -92,14 +133,13 @@ deviceOctant* octreeSystem::sendToGPU()
     cudaMemcpy(d_octantList, h_octantList, octCount*sizeof(deviceOctant), cudaMemcpyHostToDevice);
 
     return d_octantList;
-}
+}*/
 
 void octreeSystem::freeFromGPU()
 {
     // Free dyanmically allocated memory
     for (int i = 0; i < octCount; i++)
     {
-        cudaFree(h_octantList[i].d_containedParticleIndices);
         cudaFree(h_octantList[i].d_neibBucketsIndices);
     }
 
@@ -126,9 +166,7 @@ void octreeSystem::findAllBucketNeibs()
     for (int i = 0; i < octantList.size(); i++)
     {
         if (octantList[i].isBucket)
-        {
             octantList[i].findNeibBuckets(octantList, 0);
-        }
     }
 }
 
@@ -242,7 +280,7 @@ void octant::findNeibBuckets(std::vector<octant>& octantList, int currentIndex)
 {
     octant currentOct = octantList[currentIndex];
 
-    float hCell = 2 * std::max(octRect.width, octRect.height);
+    float hCell = 2 * std::max(octRect.width, octRect.height) + 10;
     bool near = octRect.withinDistance(currentOct.octRect, hCell);
     bool contains = octRect.contains(currentOct.octRect);
     bool containedBy = currentOct.octRect.contains(octRect);

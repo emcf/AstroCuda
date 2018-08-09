@@ -14,7 +14,8 @@ struct deviceOctant
 
     // Note that this cannot exceed MAX_PARTICLES_PER_BUCKET
     int containedParticleCount;
-    int* d_containedParticleIndices;
+    int firstContainedParticleIdx;
+    //int* d_containedParticleIndices;
 
     // Note that this cannot exceed MAX_NEIBS_PER_BUCKET
     int neibBucketCount;
@@ -73,8 +74,8 @@ struct octreeSystem
     void kernelFindNeibs_CPU(int blockIdx, int threadIdx, particleSystem& pSystem, std::vector<octant>& octantList);
     // Finds neighbouring particles to each particle.
     void findNeibParticles(particleSystem& pSystem);
-    // Converts each bucket octant into a deviceOctant and sends it to the device.
-    deviceOctant* sendToGPU();
+    // Arranges the particles in pSystem into a morton curve to send to GPU
+    void arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
     // Frees deviceOctant data on the GPU
     void freeFromGPU();
 };

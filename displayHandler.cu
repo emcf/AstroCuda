@@ -50,23 +50,28 @@ void displayHandler::drawCircle(float2 centre, float radius)
 //void displayHandler::drawNeibOcts(octreeSystem& octSystem,)
 
 // Draws the Z-Order curve to represent the organization of bucket data to go the GPU
-void displayHandler::drawMortonCurve(octreeSystem& octSystem)
+void displayHandler::drawMortonCurve(octreeSystem& octSystem, particleSystem& pSystem)
 {
     if (DRAW_MORTON_CURVE)
     {
         glBegin(GL_LINES);
-        for (int i = 0; i < octSystem.octantList.size(); i++)
+        // Draw morton-curve lines from particle to particle
+        for (int i = 0; i < N - 1; i++)
         {
-            if (DRAW_MORTON_CURVE && i > 0)
-            {
-                glColor3f(
-                    (0.5f * (float)i / (float)octSystem.octantList.size()) / 2.0f,
-                    (0.2f) / 2.0f,
-                    (0.2f) / 2.0f
-                );
-                glVertex2f(octSystem.octantList[i - 1].octRect.centre.x, octSystem.octantList[i - 1].octRect.centre.y);
-                glVertex2f(octSystem.octantList[i].octRect.centre.x, octSystem.octantList[i].octRect.centre.y);
-            }
+            // Colour related to location in memory
+            glColor3f(0.2f * (float)i / (float)N, 0.1f, 0.1f);
+            float2 pos = {pSystem.h_deviceParticleList[i].particleData[0], pSystem.h_deviceParticleList[i].particleData[1]};
+            float2 pos2 = {pSystem.h_deviceParticleList[i + 1].particleData[0], pSystem.h_deviceParticleList[i +1 ].particleData[1]};
+            glVertex2f(pos.x, pos.y);
+            glVertex2f(pos2.x, pos2.y);
+        }
+        // Draw morton-curve lines from oct to oct
+        for (int i = 0; i < octSystem.octantList.size() - 1; i++)
+        {
+            // Colour related to location in memory
+            glColor3f(0.4f * (float)i / (float)octSystem.octantList.size(), 0.2f, 0.2f);
+            glVertex2f(octSystem.octantList[i].octRect.centre.x, octSystem.octantList[i].octRect.centre.y);
+            glVertex2f(octSystem.octantList[i + 1].octRect.centre.x, octSystem.octantList[i + 1].octRect.centre.y);
         }
         glEnd();
     }

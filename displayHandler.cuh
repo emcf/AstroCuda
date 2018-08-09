@@ -8,7 +8,7 @@ struct displayHandler
 {
     void init();
     void drawSimulation();
-    void drawMortonCurve(octreeSystem& octSystem);
+    void drawMortonCurve(octreeSystem& octSystem, particleSystem& pSystem);
     void drawCircle(float2 centre, float radius);
     void drawOct(octreeSystem& octSystem, int index);
     void fillOct(octreeSystem& octSystem, int index);

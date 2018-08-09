@@ -17,7 +17,7 @@ static displayHandler display;
 void draw()
 {
     glClear(GL_COLOR_BUFFER_BIT);
-    display.drawMortonCurve(octSystem);
+    display.drawMortonCurve(octSystem, pSystem);
     display.drawSmoothingLenghs(pSystem);
     for (int i = 0; i < octSystem.octCount; i++)
         display.drawOct(octSystem, i);
@@ -35,20 +35,25 @@ int main(int argc, char* argv[])
 
     while (true)
     {
-        pSystem.integrate();
+        // Build octree
         octSystem.reset();
         octSystem.makeOctree(pSystem);
         octSystem.findAllBucketNeibs();
         octSystem.eliminateBranches();
 
-        deviceOctant* d_octantList = octSystem.sendToGPU();
-        sphSystem.computeDensity(octSystem, pSystem, d_octantList);
-        octSystem.freeFromGPU();
-        cudaMemcpy(pSystem.densities, pSystem.d_densities, N*sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(pSystem.smoothingLengths, pSystem.d_smoothingLengths, N*sizeof(float), cudaMemcpyDeviceToHost);
+        // Rearrange particle data to work on GPU, send it to GPU
+        deviceParticle* d_deviceParticleList;
+        deviceOctant* d_octantList;
+        cudaMalloc((void**) &d_deviceParticleList, N*sizeof(deviceParticle));
+        cudaMalloc((void**) &d_octantList, octSystem.octCount*sizeof(deviceOctant));
+        octSystem.arrangeAndTransfer(pSystem, d_octantList, d_deviceParticleList);
 
-        for (int i = 0; i < N; i++)
-            std::cout << pSystem.densities[i] << std::endl;
+        // Compute density and integrate positions on GPU
+        sphSystem.computeDensity(octSystem, pSystem, d_octantList, d_deviceParticleList);
+
+        // Get data from GPU, rearrange particle data to work on host
+        octSystem.freeFromGPU();
+        pSystem.getFromGPU(d_deviceParticleList);
 
         draw();
     }

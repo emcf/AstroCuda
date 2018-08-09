@@ -6,37 +6,43 @@
 #include <thrust/host_vector.h>
 #include "simulationSettings.h"
 
+struct deviceParticle
+{
+    // 0: x position
+    // 1: y position
+    // 2: z position
+    // 3: ID
+    // 4: x velocity
+    // 5: y velocity
+    // 6: z velocity
+    // 7: mass
+    // 8: smoothing length
+    // 9: density
+    // 10: omega
+    // 11: pressure
+    float particleData[PARTICLE_DATA_LENGTH];
+};
+
 struct particleSystem
 {
     // Constructor/Destructor
     particleSystem();
     ~particleSystem();
 
-    // Position
-    // x, y, z, ID
+    deviceParticle* h_deviceParticleList;
+
     float4* pos;
-    float4* d_pos;
-
-    // Velocity
-    // x, y, z
-    float3* vel;
-    float3* d_vel;
-
+    float3* prevpos;
     float* mass;
-    float* d_mass;
-
     float* smoothingLengths;
-    float* d_smoothingLengths;
-
     float* densities;
-    float* d_densities;
+    float* omegas;
+    float* pressures;
 
     // Initiates position, velocity, and copies memory to GPU
     void init();
-    // Euler integration on particle positions using CUDA kernel
-    void integrate();
-
-    float getSquaredDistance(int indexA, int indexB);
+    // Pulls data from GPU, "undoes" morton curve arrangement
+    void getFromGPU(deviceParticle* d_deviceParticleList);
 };
 
 // Thrust functor to generate random particle positions
