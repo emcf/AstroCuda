@@ -23,7 +23,6 @@ void draw()
         display.drawOct(octSystem, i);
     for (int i = 0; i < N; i++)
         display.drawParticle(pSystem, i);
-
     glFlush();
 }
 

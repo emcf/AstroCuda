@@ -30,7 +30,7 @@ void displayHandler::drawCircle(float2 centre, float radius)
 {
     glBegin(GL_LINE_LOOP);
     //glColor3f(0.3f, 0.3f, 0.3f);
-    glColor3f(20.0f / 255.0f, 20.0f / 255.0f, 20.0f / 255.0f);
+    glColor3f(40.0f / 255.0f, 40.0f / 255.0f, 40.0f / 255.0f);
     // The amount of points drawn must scale with the radius so it looks smooth. Max is 100 to minimize lag
     float points = PI * radius;
     points = (points > 50) ? 50 : points;
@@ -163,7 +163,7 @@ void displayHandler::drawSmoothingLenghs(particleSystem& pSystem)
 void displayHandler::drawParticle(particleSystem& pSystem, int i)
 {
     glColor3f(pSystem.densities[i] * 5, 0.2f, 0.2f);
-    fillCircle(pSystem.pos[i].x, pSystem.pos[i].y, pSystem.mass[i] * 0.7f);
+    fillCircle(pSystem.pos[i].x, pSystem.pos[i].y, pSystem.mass[i] * 0.5f);
 }
 
 void displayHandler::fillCircle(GLfloat x, GLfloat y, GLfloat radius)

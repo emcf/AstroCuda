@@ -279,13 +279,8 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
 void octant::findNeibBuckets(std::vector<octant>& octantList, int currentIndex)
 {
     octant currentOct = octantList[currentIndex];
-
     float hCell = 2 * std::max(octRect.width, octRect.height) + 10;
-    bool near = octRect.withinDistance(currentOct.octRect, hCell);
-    bool contains = octRect.contains(currentOct.octRect);
-    bool containedBy = currentOct.octRect.contains(octRect);
-
-    if (containedBy || contains || near)
+    if (octRect.withinDistance(currentOct.octRect, hCell))
     {
         if (currentOct.isBucket)
         {
