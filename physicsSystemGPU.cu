@@ -22,18 +22,11 @@ physicsSystemGPU::~physicsSystemGPU()
 }
 
 // Computes densities for all particles on the GPU
-void physicsSystemGPU::computeDensity(octreeSystem& octSystem, particleSystem& pSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+void physicsSystemGPU::RunGPUSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
 {
     dim3 blocksPerGrid(octSystem.octCount);
     dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
-    computeDensityKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList);
-}
-
-void physicsSystemGPU::computeAcceleration(octreeSystem& octSystem, particleSystem& pSystem, deviceOctant* d_octantList)
-{
-    dim3 blocksPerGrid(octSystem.octCount);
-    dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
-    //computeAccelerationKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, pSystem.d_pos, pSystem.d_vel, pSystem.d_smoothingLengths, pSystem.d_densities, pSystem.d_mass, pSystem.d_omegas, pSystem.d_pressures, DELTA_TIME);
+    SPHKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList);
 }
 
 // M4 Cubic Spline smoothing kernel. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
@@ -84,14 +77,13 @@ __host__ __device__ double dhdp(float h, float p)
     return -h/(2*p);
 }
 
-// Density function. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
-__global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+__global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
 {
     // Gather basic octant/particle data
     deviceOctant oct = d_octantList[blockIdx.x];
+    int particleIdx = oct.firstContainedParticleIdx + threadIdx.x;
     if (threadIdx.x >= oct.containedParticleCount)
         return;
-    int particleIdx = oct.firstContainedParticleIdx + threadIdx.x;
 
     // Place this particle into shared memory cache, so other threads in this block can use it
     __shared__ deviceParticle containedParticles[MAX_PARTICLES_PER_BUCKET];
@@ -100,13 +92,14 @@ __global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle*
     __syncthreads();
 
     int counter = 0;
+    float2 a;
     double h  = thisParticle.particleData[8];
     double mass = thisParticle.particleData[7];
     double Z = 1, dZdh, p, dpdh, omega, omegaSum;
-    float2 a;
 
-    // Calculate density at current smoothing length and adjust smoothing length using the Newton-Raphson method
-    while ((fabs(Z) > THRESHOLD || h <= 0) && counter++ < 20)
+    // Calculate density/acceleration at current smoothing length,
+    // Adjust smoothing length using the Newton-Raphson method
+    while ((fabs(Z) > THRESHOLD || h <= 0) && counter++ < 3)
     {
         // Reset SPH data
         p = 0;
@@ -114,13 +107,17 @@ __global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle*
         omegaSum = 0;
         a = {0, 0};
 
-        // Iterate through each neib bucket, then iterate through each particle in that bucket
+        // Iterate through each neib bucket
         for (int i = 0; i < oct.neibBucketCount; i++)
         {
             deviceOctant neibOct = d_octantList[oct.d_neibBucketsIndices[i]];
             bool sameOct = neibOct.firstContainedParticleIdx == oct.firstContainedParticleIdx;
+            // Iterate through each particle in neib bucket
             for (int j = 0; j < neibOct.containedParticleCount; j++)
             {
+                // Allows shared memory multicasts to occur
+                __syncthreads();
+
                 int neibIdx = neibOct.firstContainedParticleIdx + j;
                 // If the neib particle is within this octant, ensure shared memory cache is used
                 deviceParticle neibParticle = sameOct ? containedParticles[j] : d_deviceParticleList[neibIdx];
@@ -132,7 +129,7 @@ __global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle*
                 // Increment acceleration
                 a.x += (rx/r) * (G_CONST * neibMass / square(r));
                 a.y += (ry/r) * (G_CONST * neibMass / square(r));
-                // Increment density and density deritative
+                // Increment density and density deritative. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
                 dpdh += neibMass * dWdh(r, h);
                 p += neibMass * W(r, h);
                 // Intrement a sum for further use in Omega calculation
@@ -140,7 +137,7 @@ __global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle*
             }
         }
 
-        // Using Newton-Raphson method on this Z calculation enforces the relationship in http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf
+        // Using Newton-Raphson method on this Z calculation enforces the relationship in http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
         Z = mass * square(ETA / h) - p;
         dZdh = (-2.0f * mass * square(ETA) / cube(h)) - dpdh;
         h -= Z / dZdh;

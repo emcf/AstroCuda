@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
         octSystem.arrangeAndTransfer(pSystem, d_octantList, d_deviceParticleList);
 
         // Compute density and integrate positions on GPU
-        sphSystem.computeDensity(octSystem, pSystem, d_octantList, d_deviceParticleList);
+        sphSystem.RunGPUSPH(octSystem, d_octantList, d_deviceParticleList);
 
         // Get data from GPU, rearrange particle data to work on host
         octSystem.freeFromGPU();

@@ -8,8 +8,7 @@ struct physicsSystemGPU
     physicsSystemGPU();
     ~physicsSystemGPU();
 
-    void computeDensity(octreeSystem& octSystem, particleSystem& pSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
-    void computeAcceleration(octreeSystem& octSystem, particleSystem& pSystem, deviceOctant* d_octantList);
+    void RunGPUSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
 };
 
 // M4 Cubic Spline smoothing kernel. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
@@ -22,8 +21,7 @@ __host__ __device__ double dWdr(float r, float h);
 __host__ __device__ double dwdh(float r, float h);
 __host__ __device__ double dwdr(float r, float h);
 
-// Density function. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
-__global__ void computeDensityKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
+__global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
 
  // Acceleration function. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 30)
  /*__global__ void computeAccelerationKernel(deviceOctant* d_octantList,

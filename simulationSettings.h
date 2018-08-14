@@ -3,9 +3,9 @@
 #define WIDTH 920
 #define HEIGHT 950
 // Maximum amoount of particles per bucket (leaf node) in octree
-#define MAX_PARTICLES_PER_BUCKET 256
+#define MAX_PARTICLES_PER_BUCKET 1024
 // Amount of particles
-#define N 4096
+#define N (4*4096)
 #define PARTICLE_DATA_LENGTH 12
 // Amount of octants to allocate for octreeSystem.octantList. Should be the maximum amount of possible octants for memory safety
 // This algorithm shown is not 100% safe; it is merely a memory-conservative estimate on how many octs might be needed

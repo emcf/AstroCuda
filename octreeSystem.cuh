@@ -15,7 +15,6 @@ struct deviceOctant
     // Note that this cannot exceed MAX_PARTICLES_PER_BUCKET
     int containedParticleCount;
     int firstContainedParticleIdx;
-    //int* d_containedParticleIndices;
 
     // Note that this cannot exceed MAX_NEIBS_PER_BUCKET
     int neibBucketCount;
@@ -36,7 +35,6 @@ struct octant
 
     std::vector<int> containedParticlesIndices;
     std::vector<int> neibBucketIndices;
-    std::vector<int> neibParticleIndices;
 
     // SPH data
     float neibSearchRadius;
@@ -47,7 +45,7 @@ struct octant
     // Subdivides into child quadrants
     void divide(std::vector<octant>& octantList, particleSystem& pSystem, int& bucketCounter);
     // Finds all bucket octants where distance < H_CELL
-    void findNeibBuckets(std::vector<octant>& octantList, int currentIndex);
+    void neibSearchTraversal(std::vector<octant>& octantList, int currentIndex);
 };
 
 struct octreeSystem

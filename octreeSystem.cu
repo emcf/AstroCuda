@@ -166,7 +166,7 @@ void octreeSystem::findAllBucketNeibs()
     for (int i = 0; i < octantList.size(); i++)
     {
         if (octantList[i].isBucket)
-            octantList[i].findNeibBuckets(octantList, 0);
+            octantList[i].neibSearchTraversal(octantList, 0);
     }
 }
 
@@ -276,24 +276,18 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
 }
 
 // Traverses octants recursively to check if they are within H_CELL. If they are, store them in neibBucketIndices
-void octant::findNeibBuckets(std::vector<octant>& octantList, int currentIndex)
+void octant::neibSearchTraversal(std::vector<octant>& octantList, int currentIndex)
 {
     octant currentOct = octantList[currentIndex];
     float hCell = 2 * std::max(octRect.width, octRect.height) + 10;
     if (octRect.withinDistance(currentOct.octRect, hCell))
     {
         if (currentOct.isBucket)
-        {
-            // Add this bucket to neib bucket list
             neibBucketIndices.push_back(currentOct.bucketIndex);
-            // Also add all particles inside this neib bucket to neibParticleIndices
-            neibParticleIndices.insert(neibParticleIndices.end(), currentOct.containedParticlesIndices.begin(), currentOct.containedParticlesIndices.end());
-
-        }
         else
         {
             for (int i = 0; i < 4; i++)
-                findNeibBuckets(octantList, currentOct.childrenIndices[i]);
+                neibSearchTraversal(octantList, currentOct.childrenIndices[i]);
         }
     }
 }
