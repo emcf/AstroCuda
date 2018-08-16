@@ -25,20 +25,20 @@ physicsSystemGPU::~physicsSystemGPU()
 }
 
 // Computes densities for all particles on the GPU
-void physicsSystemGPU::solveSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+void physicsSystemGPU::solveSPH(quadtreeSystem& quadSystem, deviceQuad* d_quadList, deviceParticle* d_deviceParticleList)
 {
-    // Allocate a block for each oct, and a thread for each particle within
-    dim3 blocksPerGrid(octSystem.octCount);
+    // Allocate a block for each quad, and a thread for each particle within
+    dim3 blocksPerGrid(quadSystem.quadCount);
     dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
-    SPHSolverKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList, d_gradW);
+    SPHSolverKernel<<<blocksPerGrid, threadsPerBlock>>>(d_quadList, d_deviceParticleList, d_gradW);
 }
 
-void physicsSystemGPU::integrate(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+void physicsSystemGPU::integrate(quadtreeSystem& quadSystem, deviceQuad* d_quadList, deviceParticle* d_deviceParticleList)
 {
-    // Allocate a block for each oct, and a thread for each particle within
-    dim3 blocksPerGrid(octSystem.octCount);
+    // Allocate a block for each quad, and a thread for each particle within
+    dim3 blocksPerGrid(quadSystem.quadCount);
     dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
-    integratorKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList, d_gradW);
+    integratorKernel<<<blocksPerGrid, threadsPerBlock>>>(d_quadList, d_deviceParticleList, d_gradW);
 }
 
 // M4 Cubic Spline smoothing kernel. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
@@ -103,12 +103,12 @@ __host__ __device__ double P(double p)
     return ((5.0f/3.0f) - 1) * p * INTERNAL_ENERGY;
 }
 
-__global__ void SPHSolverKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW)
+__global__ void SPHSolverKernel(deviceQuad* d_quadList, deviceParticle* d_deviceParticleList, float2* d_gradW)
 {
-    // Gather basic octant/particle data
-    deviceOctant oct = d_octantList[blockIdx.x];
-    int particleIdx = oct.firstContainedParticleIdx + threadIdx.x;
-    if (threadIdx.x >= oct.containedParticleCount)
+    // Gather basic quad/particle data
+    deviceQuad quad = d_quadList[blockIdx.x];
+    int particleIdx = quad.firstContainedParticleIdx + threadIdx.x;
+    if (threadIdx.x >= quad.containedParticleCount)
         return;
 
     // Place this particle into shared memory cache, so other threads in this block can use it
@@ -132,18 +132,18 @@ __global__ void SPHSolverKernel(deviceOctant* d_octantList, deviceParticle* d_de
         dpdh = 0;
 
         // Iterate through each neib bucket
-        for (int i = 0; i < oct.neibBucketCount; i++)
+        for (int i = 0; i < quad.neibBucketCount; i++)
         {
-            deviceOctant neibOct = d_octantList[oct.d_neibBucketsIndices[i]];
-            bool sameOct = neibOct.firstContainedParticleIdx == oct.firstContainedParticleIdx;
+            deviceQuad neibQuad = d_quadList[quad.d_neibBucketsIndices[i]];
+            bool sameQuad = neibQuad.firstContainedParticleIdx == quad.firstContainedParticleIdx;
             // Iterate through each particle in neib bucket
-            for (int j = 0; j < neibOct.containedParticleCount; j++)
+            for (int j = 0; j < neibQuad.containedParticleCount; j++)
             {
                 // Allows shared memory multicasts to occur
                 __syncthreads();
-                int neibIdx = neibOct.firstContainedParticleIdx + j;
-                // If the neib particle is within this octant, ensure shared memory cache is used
-                deviceParticle neibParticle = sameOct ? containedParticles[j] : d_deviceParticleList[neibIdx];
+                int neibIdx = neibQuad.firstContainedParticleIdx + j;
+                // If the neib particle is within this quad, ensure shared memory cache is used
+                deviceParticle neibParticle = sameQuad ? containedParticles[j] : d_deviceParticleList[neibIdx];
                 // Calculate SPH things
                 float neibMass = neibParticle.particleData[7];
                 float rx = neibParticle.particleData[0] - thisParticle.particleData[0];
@@ -174,18 +174,18 @@ __global__ void SPHSolverKernel(deviceOctant* d_octantList, deviceParticle* d_de
     d_deviceParticleList[particleIdx].particleData[9] = p;
     d_deviceParticleList[particleIdx].particleData[10] = P(p);
 
-    // Smoothing length of oct for the next iteration should
-    // be roughly 2 times the max smoothing length in oct
-    if (h > d_octantList[blockIdx.x].hCell)
-        d_octantList[blockIdx.x].hCell = 2 * h;
+    // Smoothing length of quad for the next iteration should
+    // be roughly 2 times the max smoothing length in quad
+    if (h > d_quadList[blockIdx.x].hCell)
+        d_quadList[blockIdx.x].hCell = 2 * h;
 }
 
-__global__ void integratorKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW)
+__global__ void integratorKernel(deviceQuad* d_quadList, deviceParticle* d_deviceParticleList, float2* d_gradW)
 {
-    // Gather basic octant/particle data
-    deviceOctant oct = d_octantList[blockIdx.x];
-    int particleIdx = oct.firstContainedParticleIdx + threadIdx.x;
-    if (threadIdx.x >= oct.containedParticleCount)
+    // Gather basic quad/particle data
+    deviceQuad quad = d_quadList[blockIdx.x];
+    int particleIdx = quad.firstContainedParticleIdx + threadIdx.x;
+    if (threadIdx.x >= quad.containedParticleCount)
         return;
 
     // Place this particle into shared memory cache, so other threads in this block can use it
@@ -198,18 +198,18 @@ __global__ void integratorKernel(deviceOctant* d_octantList, deviceParticle* d_d
     float2 dvdt = {0, 0};
 
     // Iterate through each neib bucket
-    for (int i = 0; i < oct.neibBucketCount; i++)
+    for (int i = 0; i < quad.neibBucketCount; i++)
     {
-        deviceOctant neibOct = d_octantList[oct.d_neibBucketsIndices[i]];
-        bool sameOct = neibOct.firstContainedParticleIdx == oct.firstContainedParticleIdx;
+        deviceQuad neibQuad = d_quadList[quad.d_neibBucketsIndices[i]];
+        bool sameQuad = neibQuad.firstContainedParticleIdx == quad.firstContainedParticleIdx;
         // Iterate through each particle in neib bucket
-        for (int j = 0; j < neibOct.containedParticleCount; j++)
+        for (int j = 0; j < neibQuad.containedParticleCount; j++)
         {
             // Allows shared memory multicasts to occur
             __syncthreads();
-            int neibIdx = neibOct.firstContainedParticleIdx + j;
-            // If the neib particle is within this octant, ensure shared memory cache is used
-            deviceParticle neibParticle = sameOct ? containedParticles[j] : d_deviceParticleList[neibIdx];
+            int neibIdx = neibQuad.firstContainedParticleIdx + j;
+            // If the neib particle is within this quad, ensure shared memory cache is used
+            deviceParticle neibParticle = sameQuad ? containedParticles[j] : d_deviceParticleList[neibIdx];
             // Calculate SPH things
             float neibMass = neibParticle.particleData[7];
             // Increment acceleration https://academic.oup.com/mnras/article/471/2/2357/3906602 (Equation 12)
@@ -240,7 +240,7 @@ __global__ void integratorKernel(deviceOctant* d_octantList, deviceParticle* d_d
 
 /*
 // Acceleration function. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 30)
-__global__ void computeAccelerationKernel(deviceOctant* d_octantList,
+__global__ void computeAccelerationKernel(deviceQuad* d_quadList,
                                           float4* d_pos,
                                           float3* d_vel,
                                           float* d_smoothingLengths,
@@ -250,14 +250,14 @@ __global__ void computeAccelerationKernel(deviceOctant* d_octantList,
                                           float* d_pressures,
                                           float dt)
 {
-    // Gather information about this thread's corresponding octant and particle.
-    deviceOctant oct = d_octantList[blockIdx.x];
-    if (threadIdx.x >= oct.containedParticleCount)
+    // Gather information about this thread's corresponding quad and particle.
+    deviceQuad quad = d_quadList[blockIdx.x];
+    if (threadIdx.x >= quad.containedParticleCount)
         return;
-    int particleIdx = oct.d_containedParticleIndices[threadIdx.x];
+    int particleIdx = quad.d_containedParticleIndices[threadIdx.x];
     double h = d_smoothingLengths[particleIdx];
 
-    // Use MAX_PARTICLES_PER_BUCKET*4*4 bytes of shared mem to hold particle data within this oct
+    // Use MAX_PARTICLES_PER_BUCKET*4*4 bytes of shared mem to hold particle data within this quad
     // Each float4 holds {x, y, z, mass}
     __shared__ float4 containedParticles[MAX_PARTICLES_PER_BUCKET];
     float4 particlePos = d_pos[particleIdx];
@@ -271,16 +271,16 @@ __global__ void computeAccelerationKernel(deviceOctant* d_octantList,
     __syncthreads();
 
     float accel = 0;
-    for (int i = 0; i < oct.neibBucketCount; i++)
+    for (int i = 0; i < quad.neibBucketCount; i++)
     {
-        deviceOctant neibOct = d_octantList[oct.d_neibBucketsIndices[i]];
-        bool sameOct = neibOct.d_containedParticleIndices == oct.d_containedParticleIndices;
+        deviceQuad neibQuad = d_quadList[quad.d_neibBucketsIndices[i]];
+        bool sameQuad = neibQuad.d_containedParticleIndices == quad.d_containedParticleIndices;
 
-        for (int j = 0; j < neibOct.containedParticleCount; j++)
+        for (int j = 0; j < neibQuad.containedParticleCount; j++)
         {
-            int neibIdx = neibOct.d_containedParticleIndices[j];
-            float4 neibPos = sameOct ? containedParticles[j] : d_pos[neibIdx];
-            float neibMass = sameOct ? containedParticles[j].z : d_mass[neibIdx];
+            int neibIdx = neibQuad.d_containedParticleIndices[j];
+            float4 neibPos = sameQuad ? containedParticles[j] : d_pos[neibIdx];
+            float neibMass = sameQuad ? containedParticles[j].z : d_mass[neibIdx];
             float neibSmoothingLength =  d_smoothingLengths[neibIdx];
             float neibOmega = d_omegas[neibIdx];
             float neibPressure = 1; //d_pressures[neibIdx];

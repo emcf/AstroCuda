@@ -1,6 +1,6 @@
 #pragma once
 #include "particleSystem.cuh"
-#include "octreeSystem.cuh"
+#include "quadtreeSystem.cuh"
 
 struct physicsSystemGPU
 {
@@ -12,8 +12,8 @@ struct physicsSystemGPU
     physicsSystemGPU();
     ~physicsSystemGPU();
 
-    void solveSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
-    void integrate(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
+    void solveSPH(quadtreeSystem& quadSystem, deviceQuad* d_quadList, deviceParticle* d_deviceParticleList);
+    void integrate(quadtreeSystem& quadSystem, deviceQuad* d_quadList, deviceParticle* d_deviceParticleList);
 };
 
 // M4 Cubic Spline smoothing kernel. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
@@ -29,5 +29,5 @@ __host__ __device__ double dwdh(float r, float h);
 __host__ __device__ double dwdr(float r, float h);
 __host__ __device__ double dwdq(float q);
 // GPU Kernels
-__global__ void SPHSolverKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW);
-__global__ void integratorKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW);
+__global__ void SPHSolverKernel(deviceQuad* d_quadList, deviceParticle* d_deviceParticleList, float2* d_gradW);
+__global__ void integratorKernel(deviceQuad* d_quadList, deviceParticle* d_deviceParticleList, float2* d_gradW);

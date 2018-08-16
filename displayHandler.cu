@@ -1,6 +1,6 @@
 #include <GL/glut.h>
 #include "particleSystem.cuh"
-#include "octreeSystem.cuh"
+#include "quadtreeSystem.cuh"
 #include "simulationSettings.h"
 #include "displayHandler.cuh"
 #define PI 3.14159f
@@ -17,7 +17,7 @@ void displayHandler::init()
     glutInitDisplayMode (GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize(WIDTH, HEIGHT);
     glutInitWindowPosition(0, 0);
-    glutCreateWindow("CUDA Octree KNN");
+    glutCreateWindow("CUDA Quadree KNN");
     glClearColor(10.0f / 255.0f, 10.0f / 255.0f, 10.0f / 255.0f, 0.0f);
     glColor3f(1.0, 1.0, 1.0);
     glMatrixMode(GL_PROJECTION);
@@ -46,11 +46,11 @@ void displayHandler::drawCircle(float2 centre, float radius)
     glEnd();
 }
 
-// TODO: Don't forget octant neib finding is broken
-//void displayHandler::drawNeibOcts(octreeSystem& octSystem,)
+// TODO: Don't forget quad neib finding is broken
+//void displayHandler::drawNeibQuads(quadtreeSystem& QuadSystem,)
 
 // Draws the Z-Order curve to represent the organization of bucket data to go the GPU
-void displayHandler::drawMortonCurve(octreeSystem& octSystem, particleSystem& pSystem)
+void displayHandler::drawMortonCurve(quadtreeSystem& QuadSystem, particleSystem& pSystem)
 {
     if (DRAW_MORTON_CURVE)
     {
@@ -65,82 +65,82 @@ void displayHandler::drawMortonCurve(octreeSystem& octSystem, particleSystem& pS
             glVertex2f(pos.x, pos.y);
             glVertex2f(pos2.x, pos2.y);
         }
-        // Draw morton-curve lines from oct to oct
-        for (int i = 0; i < octSystem.octantList.size() - 1; i++)
+        // Draw morton-curve lines from Quad to Quad
+        for (int i = 0; i < QuadSystem.quadList.size() - 1; i++)
         {
             // Colour related to location in memory
-            glColor3f(0.4f * (float)i / (float)octSystem.octantList.size(), 0.2f, 0.2f);
-            glVertex2f(octSystem.octantList[i].octRect.centre.x, octSystem.octantList[i].octRect.centre.y);
-            glVertex2f(octSystem.octantList[i + 1].octRect.centre.x, octSystem.octantList[i + 1].octRect.centre.y);
+            glColor3f(0.4f * (float)i / (float)QuadSystem.quadList.size(), 0.2f, 0.2f);
+            glVertex2f(QuadSystem.quadList[i].quadRect.centre.x, QuadSystem.quadList[i].quadRect.centre.y);
+            glVertex2f(QuadSystem.quadList[i + 1].quadRect.centre.x, QuadSystem.quadList[i + 1].quadRect.centre.y);
         }
         glEnd();
     }
 }
 
-void displayHandler::drawNeibRadius(octreeSystem& octSystem, particleSystem& pSystem, int octIdx)
+void displayHandler::drawNeibRadius(quadtreeSystem& QuadSystem, particleSystem& pSystem, int QuadIdx)
 {
     glBegin(GL_LINES);
     glColor3f(0.3, 0.8f, 0.3f);
-    float hCell = 2 * std::max(octSystem.octantList[octIdx].octRect.width, octSystem.octantList[octIdx].octRect.height);
+    float hCell = 2 * std::max(QuadSystem.quadList[QuadIdx].quadRect.width, QuadSystem.quadList[QuadIdx].quadRect.height);
 
     // Top range
-    glVertex2f(octSystem.octantList[octIdx].octRect.centre.x, octSystem.octantList[octIdx].octRect.topLeft.y);
-    glVertex2f(octSystem.octantList[octIdx].octRect.centre.x, octSystem.octantList[octIdx].octRect.topLeft.y + hCell);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.centre.x, QuadSystem.quadList[QuadIdx].quadRect.topLeft.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.centre.x, QuadSystem.quadList[QuadIdx].quadRect.topLeft.y + hCell);
 
     // Bottom range
-    glVertex2f(octSystem.octantList[octIdx].octRect.centre.x, octSystem.octantList[octIdx].octRect.bottomLeft.y);
-    glVertex2f(octSystem.octantList[octIdx].octRect.centre.x, octSystem.octantList[octIdx].octRect.bottomLeft.y - hCell);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.centre.x, QuadSystem.quadList[QuadIdx].quadRect.bottomLeft.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.centre.x, QuadSystem.quadList[QuadIdx].quadRect.bottomLeft.y - hCell);
 
     // Right range
-    glVertex2f(octSystem.octantList[octIdx].octRect.topRight.x, octSystem.octantList[octIdx].octRect.centre.y);
-    glVertex2f(octSystem.octantList[octIdx].octRect.topRight.x + hCell, octSystem.octantList[octIdx].octRect.centre.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.topRight.x, QuadSystem.quadList[QuadIdx].quadRect.centre.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.topRight.x + hCell, QuadSystem.quadList[QuadIdx].quadRect.centre.y);
 
     // Left range
-    glVertex2f(octSystem.octantList[octIdx].octRect.topLeft.x, octSystem.octantList[octIdx].octRect.centre.y);
-    glVertex2f(octSystem.octantList[octIdx].octRect.topLeft.x - hCell, octSystem.octantList[octIdx].octRect.centre.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.topLeft.x, QuadSystem.quadList[QuadIdx].quadRect.centre.y);
+    glVertex2f(QuadSystem.quadList[QuadIdx].quadRect.topLeft.x - hCell, QuadSystem.quadList[QuadIdx].quadRect.centre.y);
 
     glEnd();
 }
 
-// Traces lines clockwise to draw an octant
-void displayHandler::drawOct(octreeSystem& octSystem, int index)
+// Traces lines clockwise to draw an quad
+void displayHandler::drawQuad(quadtreeSystem& QuadSystem, int index)
 {
     if (DRAW_BUCKETS)
     {
         glBegin(GL_LINES);
         glColor3f(
-            (0.5f * (float)index / (float)octSystem.octantList.size()) / 2.0f,
+            (0.5f * (float)index / (float)QuadSystem.quadList.size()) / 2.0f,
             (0.2f) / 2.0f,
             (0.2f) / 2.0f
         );
 
         // Top side
-        glVertex2f(octSystem.octantList[index].octRect.topLeft.x, octSystem.octantList[index].octRect.topLeft.y);
-        glVertex2f(octSystem.octantList[index].octRect.topRight.x, octSystem.octantList[index].octRect.topRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topLeft.x, QuadSystem.quadList[index].quadRect.topLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topRight.x, QuadSystem.quadList[index].quadRect.topRight.y);
         // Right side
-        glVertex2f(octSystem.octantList[index].octRect.topRight.x, octSystem.octantList[index].octRect.topRight.y);
-        glVertex2f(octSystem.octantList[index].octRect.bottomRight.x, octSystem.octantList[index].octRect.bottomRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topRight.x, QuadSystem.quadList[index].quadRect.topRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomRight.x, QuadSystem.quadList[index].quadRect.bottomRight.y);
         // Bottom side
-        glVertex2f(octSystem.octantList[index].octRect.bottomRight.x, octSystem.octantList[index].octRect.bottomRight.y);
-        glVertex2f(octSystem.octantList[index].octRect.bottomLeft.x, octSystem.octantList[index].octRect.bottomLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomRight.x, QuadSystem.quadList[index].quadRect.bottomRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomLeft.x, QuadSystem.quadList[index].quadRect.bottomLeft.y);
         // Left side
-        glVertex2f(octSystem.octantList[index].octRect.bottomLeft.x, octSystem.octantList[index].octRect.bottomLeft.y);
-        glVertex2f(octSystem.octantList[index].octRect.topLeft.x, octSystem.octantList[index].octRect.topLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomLeft.x, QuadSystem.quadList[index].quadRect.bottomLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topLeft.x, QuadSystem.quadList[index].quadRect.topLeft.y);
 
         glEnd();
     }
 }
 
-void displayHandler::fillOct(octreeSystem& octSystem, int index)
+void displayHandler::fillQuad(quadtreeSystem& QuadSystem, int index)
 {
     if (DRAW_BUCKETS)
     {
         glBegin(GL_POLYGON);
         glColor3f(0.5f, 0.2f, 0.2f);
-        glVertex2f(octSystem.octantList[index].octRect.topLeft.x, octSystem.octantList[index].octRect.topLeft.y);
-        glVertex2f(octSystem.octantList[index].octRect.topRight.x, octSystem.octantList[index].octRect.topRight.y);
-        glVertex2f(octSystem.octantList[index].octRect.bottomRight.x, octSystem.octantList[index].octRect.bottomRight.y);
-        glVertex2f(octSystem.octantList[index].octRect.bottomLeft.x, octSystem.octantList[index].octRect.bottomLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topLeft.x, QuadSystem.quadList[index].quadRect.topLeft.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.topRight.x, QuadSystem.quadList[index].quadRect.topRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomRight.x, QuadSystem.quadList[index].quadRect.bottomRight.y);
+        glVertex2f(QuadSystem.quadList[index].quadRect.bottomLeft.x, QuadSystem.quadList[index].quadRect.bottomLeft.y);
         glEnd();
     }
 }

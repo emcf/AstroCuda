@@ -2,18 +2,18 @@
 #include <GL/glut.h>
 #include "simulationSettings.h"
 #include "particleSystem.cuh"
-#include "octreeSystem.cuh"
+#include "quadtreeSystem.cuh"
 
 struct displayHandler
 {
     void init();
     void drawSimulation();
-    void drawMortonCurve(octreeSystem& octSystem, particleSystem& pSystem);
+    void drawMortonCurve(quadtreeSystem& quadSystem, particleSystem& pSystem);
     void drawCircle(float2 centre, float radius);
-    void drawOct(octreeSystem& octSystem, int index);
-    void fillOct(octreeSystem& octSystem, int index);
+    void drawQuad(quadtreeSystem& quadSystem, int index);
+    void fillQuad(quadtreeSystem& quadSystem, int index);
     void drawSmoothingLenghs(particleSystem& pSystem);
     void drawParticle(particleSystem& pSystem, int index);
     void fillCircle(GLfloat x, GLfloat y, GLfloat radius);
-    void drawNeibRadius(octreeSystem& octSystem, particleSystem& pSystem, int bucketIndex);
+    void drawNeibRadius(quadtreeSystem& quadSystem, particleSystem& pSystem, int bucketIndex);
 };
