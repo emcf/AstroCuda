@@ -34,13 +34,13 @@ int main(int argc, char* argv[])
 
     while (true)
     {
-        // Build octree
+        // Build octree on host
         octSystem.reset();
         octSystem.makeOctree(pSystem);
         octSystem.findAllBucketNeibs();
         octSystem.eliminateBranches();
 
-        // Rearrange particle data to work on GPU, send it to GPU
+        // Allocate, rearrange, and send particle data to GPU
         deviceParticle* d_deviceParticleList;
         deviceOctant* d_octantList;
         cudaMalloc((void**) &d_deviceParticleList, N*sizeof(deviceParticle));
@@ -48,10 +48,11 @@ int main(int argc, char* argv[])
         octSystem.arrangeAndTransfer(pSystem, d_octantList, d_deviceParticleList);
 
         // Compute density and integrate positions on GPU
-        sphSystem.RunGPUSPH(octSystem, d_octantList, d_deviceParticleList);
+        sphSystem.solveSPH(octSystem, d_octantList, d_deviceParticleList);
+        sphSystem.integrate(octSystem, d_octantList, d_deviceParticleList);
 
-        // Get data from GPU, rearrange particle data to work on host
-        octSystem.freeFromGPU();
+        // Return data from GPU, rearrange particle data to work on host
+        octSystem.getFromGPU(d_octantList);
         pSystem.getFromGPU(d_deviceParticleList);
 
         draw();

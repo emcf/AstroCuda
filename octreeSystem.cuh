@@ -10,15 +10,12 @@
 
 struct deviceOctant
 {
-    float neibSearchRadius;
-
-    // Note that this cannot exceed MAX_PARTICLES_PER_BUCKET
-    int containedParticleCount;
-    int firstContainedParticleIdx;
-
-    // Note that this cannot exceed MAX_NEIBS_PER_BUCKET
+    float hCell;
     int neibBucketCount;
     int* d_neibBucketsIndices;
+    int firstContainedParticleIdx;
+    // Note that this cannot exceed MAX_PARTICLES_PER_BUCKET
+    int containedParticleCount;
 };
 
 struct octant
@@ -29,15 +26,13 @@ struct octant
 
     // Octant data
     int index;
+    float hCell = std::max(WIDTH, HEIGHT);
     int childrenIndices[4];
     int bucketIndex = 0;
     bool isBucket = true;
 
     std::vector<int> containedParticlesIndices;
     std::vector<int> neibBucketIndices;
-
-    // SPH data
-    float neibSearchRadius;
 
     // Geometric data
     octRectangle octRect;
@@ -75,5 +70,5 @@ struct octreeSystem
     // Arranges the particles in pSystem into a morton curve to send to GPU
     void arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList);
     // Frees deviceOctant data on the GPU
-    void freeFromGPU();
+    void getFromGPU(deviceOctant* d_octantList);
 };

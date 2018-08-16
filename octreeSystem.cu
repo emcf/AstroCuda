@@ -71,11 +71,7 @@ void octreeSystem::arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_o
     {
         int containedParticlesCount = octantList[i].containedParticlesIndices.size();
 
-        // The neighbour search radius for this octant should be roughly proportional to this octant's size.
-        // This is because extremely large octants are likely in less dense areas and require a larger search radius, and vice versa
-        // Note: hCell should be an overestimate rather than an underestimate for accurate SPH
-        float hCell = 2 * std::max(octantList[i].octRect.width, octantList[i].octRect.height) + 10;
-        h_octantList[i].neibSearchRadius = hCell;
+        h_octantList[i].hCell = octantList[i].hCell;
 
         // Transfers info storing the # of contained particles as well as # of neib buckets for this bucket
         h_octantList[i].containedParticleCount = containedParticlesCount;
@@ -97,14 +93,13 @@ void octreeSystem::arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_o
             h_particle.particleData[1] = pSystem.pos[particleIdx].y;
             h_particle.particleData[2] = pSystem.pos[particleIdx].z;
             h_particle.particleData[3] = particleIdx;
-            h_particle.particleData[4] = pSystem.prevpos[particleIdx].x;
-            h_particle.particleData[5] = pSystem.prevpos[particleIdx].y;
-            h_particle.particleData[6] = pSystem.prevpos[particleIdx].z;
+            h_particle.particleData[4] = pSystem.vel[particleIdx].x;
+            h_particle.particleData[5] = pSystem.vel[particleIdx].y;
+            h_particle.particleData[6] = pSystem.vel[particleIdx].z;
             h_particle.particleData[7] = pSystem.mass[particleIdx];
             h_particle.particleData[8] = pSystem.smoothingLengths[particleIdx];
             h_particle.particleData[9] = pSystem.densities[particleIdx];
-            h_particle.particleData[10] = pSystem.omegas[particleIdx];
-            h_particle.particleData[11] = pSystem.pressures[particleIdx];
+            h_particle.particleData[10] = pSystem.pressures[particleIdx];
             pSystem.h_deviceParticleList[MortonCounter] = h_particle;
             MortonCounter++;
         }
@@ -116,30 +111,15 @@ void octreeSystem::arrangeAndTransfer(particleSystem& pSystem, deviceOctant* d_o
     cudaMemcpy(d_deviceParticleList, pSystem.h_deviceParticleList, N*sizeof(deviceParticle), cudaMemcpyHostToDevice);
 }
 
-// Converts each bucket octant into a deviceOctant and sends it to the device.
-/*deviceOctant* octreeSystem::sendToGPU()
+void octreeSystem::getFromGPU(deviceOctant* d_octantList)
 {
-    // Allocate device octant on device and record their "meta data" (pointers) on the CPU
-    h_octantList = new deviceOctant[octCount];
-    deviceOctant* d_octantList;
-
-    for (int i = 0; i < octCount; i++)
-    {
-
-    }
-
     // OctantList data is on GPU, now transfer the "meta data" to the GPU
-    cudaMalloc((void**) &d_octantList, octCount*sizeof(deviceOctant));
-    cudaMemcpy(d_octantList, h_octantList, octCount*sizeof(deviceOctant), cudaMemcpyHostToDevice);
+    cudaMemcpy(h_octantList, d_octantList, octCount*sizeof(deviceOctant), cudaMemcpyDeviceToHost);
 
-    return d_octantList;
-}*/
-
-void octreeSystem::freeFromGPU()
-{
     // Free dyanmically allocated memory
     for (int i = 0; i < octCount; i++)
     {
+        octantList[i].hCell = h_octantList[i].hCell;
         cudaFree(h_octantList[i].d_neibBucketsIndices);
     }
 
@@ -275,11 +255,10 @@ void octant::divide(std::vector<octant>& octantList, particleSystem& pSystem, in
     isBucket = false;
 }
 
-// Traverses octants recursively to check if they are within H_CELL. If they are, store them in neibBucketIndices
+// Traverses octants depth-first to check if they are within H_CELL. If they are, store them in neibBucketIndices
 void octant::neibSearchTraversal(std::vector<octant>& octantList, int currentIndex)
 {
     octant currentOct = octantList[currentIndex];
-    float hCell = 2 * std::max(octRect.width, octRect.height) + 10;
     if (octRect.withinDistance(currentOct.octRect, hCell))
     {
         if (currentOct.isBucket)

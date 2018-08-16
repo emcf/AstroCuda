@@ -8,36 +8,47 @@
 // A large epsilon value simulates large distances between objects, akin to objects in space
 #define EPSILON 100.0f
 #define THRESHOLD 0.001f
+#define VISCOSITY 1.0f
 
 // Constructor
 physicsSystemGPU::physicsSystemGPU()
 {
-
+    gradW = (float2*)malloc(N*N*sizeof(float2));
+    cudaMalloc((void**) &d_gradW, N*N*sizeof(float2));
 }
 
 // Destructor
 physicsSystemGPU::~physicsSystemGPU()
 {
-
+    free(gradW);
+    cudaFree(d_gradW);
 }
 
 // Computes densities for all particles on the GPU
-void physicsSystemGPU::RunGPUSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+void physicsSystemGPU::solveSPH(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
 {
+    // Allocate a block for each oct, and a thread for each particle within
     dim3 blocksPerGrid(octSystem.octCount);
     dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
-    SPHKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList);
+    SPHSolverKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList, d_gradW);
+}
+
+void physicsSystemGPU::integrate(octreeSystem& octSystem, deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+{
+    // Allocate a block for each oct, and a thread for each particle within
+    dim3 blocksPerGrid(octSystem.octCount);
+    dim3 threadsPerBlock(MAX_PARTICLES_PER_BUCKET);
+    integratorKernel<<<blocksPerGrid, threadsPerBlock>>>(d_octantList, d_deviceParticleList, d_gradW);
 }
 
 // M4 Cubic Spline smoothing kernel. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
 __host__ __device__ double w(float r, float h)
 {
     double q = r/h;
-    double sigma = 10.0f / (7.0f * PI);
     double piecewiseSpline = (q < 1) ? (0.25f * cube(2 - q)) - cube(1 - q) :
                              (q < 2) ? 0.25f * cube(2 - q) :
-                             0;
-    return sigma * piecewiseSpline;
+                             0.0f;
+    return SIGMA * piecewiseSpline;
 }
 
 // Weight function. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 6)
@@ -58,17 +69,25 @@ __host__ __device__ double dWdr(float r, float h)
 
 __host__ __device__ double dwdh(float r, float h)
 {
-    double piecewiseDerivative = ((r/h) < 1) ? (-9*cube(r) + 12*h*square(r)) / (4*quartic(h)) :
-                                 ((r/h) < 2) ? (3*r * square(2*h - r)) / (4*quartic(h)) :
-                                 0;
+    double piecewiseDerivative = ((r/h) < 1) ? (-9.0f*cube(r) + 12.0f*h*square(r)) / (4.0f*quartic(h)) :
+                                 ((r/h) < 2) ? (3.0f*r * square(2.0f*h - r)) / (4.0f*quartic(h)) :
+                                 0.0f;
     return SIGMA * piecewiseDerivative;
 }
 
 __host__ __device__ double dwdr(float r, float h)
 {
-    double piecewiseDerivative = ((r/h) < 1) ? (3*square(1-(r/h)) / h) - (3*square(2 - (r/h))/(4*h)) :
-                                 ((r/h) < 2) ?  3*square(2-(r/h)) / (4*h) :
-                                 0;
+    double piecewiseDerivative = ((r/h) < 1) ? (3.0f*square(1.0f-(r/h)) / h) - (3.0f*square(2.0f - (r/h))/(4.0f*h)) :
+                                 ((r/h) < 2) ?  3.0f*square(2.0f-(r/h)) / (4.0f*h) :
+                                 0.0f;
+    return SIGMA * piecewiseDerivative;
+}
+
+__host__ __device__ double dwdq(float q)
+{
+    double piecewiseDerivative = (q < 1) ? (3.0f*q*(3.0f*q-4.0f))/4.0f :
+                                 (q < 2) ? -(3.0f*square(q-2.0f))/4.0f :
+                                 0.0f;
     return SIGMA * piecewiseDerivative;
 }
 
@@ -77,7 +96,14 @@ __host__ __device__ double dhdp(float h, float p)
     return -h/(2*p);
 }
 
-__global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList)
+// Pressure function, https://arxiv.org/pdf/1007.1245.pdf (3.36)
+__host__ __device__ double P(double p)
+{
+    #define INTERNAL_ENERGY 1.0f
+    return ((5.0f/3.0f) - 1) * p * INTERNAL_ENERGY;
+}
+
+__global__ void SPHSolverKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW)
 {
     // Gather basic octant/particle data
     deviceOctant oct = d_octantList[blockIdx.x];
@@ -91,11 +117,11 @@ __global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_devicePa
     containedParticles[threadIdx.x] = thisParticle;
     __syncthreads();
 
+    // Declare registers
     int counter = 0;
-    float2 a;
-    double h  = thisParticle.particleData[8];
     double mass = thisParticle.particleData[7];
-    double Z = 1, dZdh, p, dpdh, omega, omegaSum;
+    double h  = thisParticle.particleData[8];
+    double Z = 1, dZdh, p, dpdh;
 
     // Calculate density/acceleration at current smoothing length,
     // Adjust smoothing length using the Newton-Raphson method
@@ -104,8 +130,6 @@ __global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_devicePa
         // Reset SPH data
         p = 0;
         dpdh = 0;
-        omegaSum = 0;
-        a = {0, 0};
 
         // Iterate through each neib bucket
         for (int i = 0; i < oct.neibBucketCount; i++)
@@ -117,7 +141,6 @@ __global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_devicePa
             {
                 // Allows shared memory multicasts to occur
                 __syncthreads();
-
                 int neibIdx = neibOct.firstContainedParticleIdx + j;
                 // If the neib particle is within this octant, ensure shared memory cache is used
                 deviceParticle neibParticle = sameOct ? containedParticles[j] : d_deviceParticleList[neibIdx];
@@ -127,13 +150,16 @@ __global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_devicePa
                 float ry = neibParticle.particleData[1] - thisParticle.particleData[1];
                 float r = sqrt(square(rx) + square(ry) + EPSILON);
                 // Increment acceleration
-                a.x += (rx/r) * (G_CONST * neibMass / square(r));
-                a.y += (ry/r) * (G_CONST * neibMass / square(r));
+                //a.x += (rx/r) * (G_CONST * neibMass / square(r));
+                //a.y += (ry/r) * (G_CONST * neibMass / square(r));
                 // Increment density and density deritative. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
                 dpdh += neibMass * dWdh(r, h);
                 p += neibMass * W(r, h);
-                // Intrement a sum for further use in Omega calculation
-                omegaSum += neibMass * dWdh(r, h);
+
+                float q = r/h;
+                float tempGradWx = rx * ((1.0f / quartic(h)) * (1.0f/q) * dwdq(q));
+                float tempGradWy = ry * ((1.0f / quartic(h)) * (1.0f/q) * dwdq(q));
+                d_gradW[particleIdx * N + neibIdx] = {tempGradWx, tempGradWy};
             }
         }
 
@@ -141,25 +167,75 @@ __global__ void SPHKernel(deviceOctant* d_octantList, deviceParticle* d_devicePa
         Z = mass * square(ETA / h) - p;
         dZdh = (-2.0f * mass * square(ETA) / cube(h)) - dpdh;
         h -= Z / dZdh;
-        omega = 1.0f - (dhdp(h, p) * omegaSum);
     }
-
-    // Verlet integration
-    float2 prevPos = {thisParticle.particleData[4], thisParticle.particleData[5]};
-    float2 pos = {thisParticle.particleData[0], thisParticle.particleData[1]};
-    float2 newPos = {pos.x * 2 - prevPos.x + a.x * square(DELTA_TIME),
-                     pos.y * 2 - prevPos.y + a.y * square(DELTA_TIME)};
-
-    // Assign new integrated position
-    d_deviceParticleList[particleIdx].particleData[0] = newPos.x;
-    d_deviceParticleList[particleIdx].particleData[1] = newPos.y;
-    d_deviceParticleList[particleIdx].particleData[4] = pos.x;
-    d_deviceParticleList[particleIdx].particleData[5] = pos.y;
 
     // Assign SPH data
     d_deviceParticleList[particleIdx].particleData[8] = h;
     d_deviceParticleList[particleIdx].particleData[9] = p;
-    d_deviceParticleList[particleIdx].particleData[10] = omega;
+    d_deviceParticleList[particleIdx].particleData[10] = P(p);
+
+    // Smoothing length of oct for the next iteration should
+    // be roughly 2 times the max smoothing length in oct
+    if (h > d_octantList[blockIdx.x].hCell)
+        d_octantList[blockIdx.x].hCell = 2 * h;
+}
+
+__global__ void integratorKernel(deviceOctant* d_octantList, deviceParticle* d_deviceParticleList, float2* d_gradW)
+{
+    // Gather basic octant/particle data
+    deviceOctant oct = d_octantList[blockIdx.x];
+    int particleIdx = oct.firstContainedParticleIdx + threadIdx.x;
+    if (threadIdx.x >= oct.containedParticleCount)
+        return;
+
+    // Place this particle into shared memory cache, so other threads in this block can use it
+    __shared__ deviceParticle containedParticles[MAX_PARTICLES_PER_BUCKET];
+    deviceParticle thisParticle = d_deviceParticleList[particleIdx];
+    containedParticles[threadIdx.x] = thisParticle;
+    __syncthreads();
+
+    // Acceleration
+    float2 dvdt = {0, 0};
+
+    // Iterate through each neib bucket
+    for (int i = 0; i < oct.neibBucketCount; i++)
+    {
+        deviceOctant neibOct = d_octantList[oct.d_neibBucketsIndices[i]];
+        bool sameOct = neibOct.firstContainedParticleIdx == oct.firstContainedParticleIdx;
+        // Iterate through each particle in neib bucket
+        for (int j = 0; j < neibOct.containedParticleCount; j++)
+        {
+            // Allows shared memory multicasts to occur
+            __syncthreads();
+            int neibIdx = neibOct.firstContainedParticleIdx + j;
+            // If the neib particle is within this octant, ensure shared memory cache is used
+            deviceParticle neibParticle = sameOct ? containedParticles[j] : d_deviceParticleList[neibIdx];
+            // Calculate SPH things
+            float neibMass = neibParticle.particleData[7];
+            // Increment acceleration https://academic.oup.com/mnras/article/471/2/2357/3906602 (Equation 12)
+            float2 gradW_i_j = d_gradW[particleIdx * N + neibIdx];
+            float thisDensity = thisParticle.particleData[9];
+            float neibDensity = neibParticle.particleData[9];
+            float thisPressure = thisParticle.particleData[10];
+            float neibPressure = neibParticle.particleData[10];
+            dvdt.x += neibMass * ((thisPressure + neibPressure) / (thisDensity * neibDensity) + VISCOSITY) * gradW_i_j.x;
+            dvdt.y += neibMass * ((thisPressure + neibPressure) / (thisDensity * neibDensity) + VISCOSITY) * gradW_i_j.y;
+        }
+    }
+
+    // Invert the sign of dvdt to match the equation
+    dvdt.x *= -1.0f;
+    dvdt.y *= -1.0f;
+
+    // Integrate velocity in registers (for faster position integration) and in global mem
+    thisParticle.particleData[4] += dvdt.x * DELTA_TIME;
+    thisParticle.particleData[5] += dvdt.y * DELTA_TIME;
+    d_deviceParticleList[particleIdx].particleData[4] = thisParticle.particleData[4];
+    d_deviceParticleList[particleIdx].particleData[5] = thisParticle.particleData[5];
+
+    // Integrate position in global mem
+    d_deviceParticleList[particleIdx].particleData[0] = thisParticle.particleData[0] + (thisParticle.particleData[4] * DELTA_TIME);
+    d_deviceParticleList[particleIdx].particleData[1] = thisParticle.particleData[1] + (thisParticle.particleData[5] * DELTA_TIME);
 }
 
 /*

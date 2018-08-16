@@ -5,11 +5,10 @@
 particleSystem::particleSystem()
 {
     pos = (float4*)malloc(N*sizeof(float4));
-    prevpos = (float3*)malloc(N*sizeof(float3));
+    vel = (float3*)malloc(N*sizeof(float3));
     mass = (float*)malloc(N*sizeof(float));
     smoothingLengths = (float*)malloc(N*sizeof(float));
     densities = (float*)malloc(N*sizeof(float));
-    omegas = (float*)malloc(N*sizeof(float));
     pressures = (float*)malloc(N*sizeof(float));
 }
 
@@ -17,11 +16,10 @@ particleSystem::particleSystem()
 particleSystem::~particleSystem()
 {
     free(pos);
-    free(prevpos);
+    free(vel);
     free(mass);
     free(smoothingLengths);
     free(densities);
-    free(omegas);
     free(pressures);
 }
 
@@ -38,8 +36,8 @@ void particleSystem::init()
         pos[i].x = h_randomFloats[i] * WIDTH;
         pos[i].y = h_randomFloats[N + i] * HEIGHT;
         mass[i] = 3 + (h_randomFloats[2 * N + i] * 4.0f);
-        prevpos[i].x = pos[i].x;
-        prevpos[i].y = pos[i].y;
+        vel[i].x = 0;
+        vel[i].y = 0;
         smoothingLengths[i] = 20.0f;
     }
 }
@@ -55,14 +53,13 @@ void particleSystem::getFromGPU(deviceParticle* d_deviceParticleList)
         pos[particleIdx].x = h_particle.particleData[0];
         pos[particleIdx].y = h_particle.particleData[1];
         pos[particleIdx].z = h_particle.particleData[2];
-        prevpos[particleIdx].x = h_particle.particleData[4];
-        prevpos[particleIdx].y = h_particle.particleData[5];
-        prevpos[particleIdx].z = h_particle.particleData[6];
+        vel[particleIdx].x = h_particle.particleData[4];
+        vel[particleIdx].y = h_particle.particleData[5];
+        vel[particleIdx].z = h_particle.particleData[6];
         mass[particleIdx] = h_particle.particleData[7];
         smoothingLengths[particleIdx] = h_particle.particleData[8];
         densities[particleIdx] = h_particle.particleData[9];
-        omegas[particleIdx] = h_particle.particleData[10];
-        pressures[particleIdx] = h_particle.particleData[11];
+        pressures[particleIdx] = h_particle.particleData[10];
     }
 }
 
@@ -74,5 +71,5 @@ __device__ float randPosFunctor::operator()(int idx)
     randomEng.discard(idx);
     // By multiplying two uniformly random real numbers, the results exponentially lean towards closer to 0 in the domain [0, 1]
     // This is ideal, since a non-uniform distribution represents astrophysical problems well.
-    return uniformRealDist(randomEng) * ((UNIFORM_DISTRIBUTION) ? 1 : uniformRealDist(randomEng));
+    return uniformRealDist(randomEng) * ((UNIFORM_DISTRIBUTION) ? 1 : (uniformRealDist(randomEng)));
 }

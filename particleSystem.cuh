@@ -6,20 +6,21 @@
 #include <thrust/host_vector.h>
 #include "simulationSettings.h"
 
+// Must satisfy the following:
+// MAX_PARTICLES_PER_BUCKET * sizeof(deviceParticle) <= 49152
 struct deviceParticle
 {
     // 0: x position
     // 1: y position
     // 2: z position
     // 3: ID
-    // 4: x velocity
-    // 5: y velocity
-    // 6: z velocity
+    // 4: x vel
+    // 5: y vel
+    // 6: z vel
     // 7: mass
     // 8: smoothing length
     // 9: density
-    // 10: omega
-    // 11: pressure
+    // 10: pressure
     float particleData[PARTICLE_DATA_LENGTH];
 };
 
@@ -32,11 +33,10 @@ struct particleSystem
     deviceParticle* h_deviceParticleList;
 
     float4* pos;
-    float3* prevpos;
+    float3* vel;
     float* mass;
     float* smoothingLengths;
     float* densities;
-    float* omegas;
     float* pressures;
 
     // Initiates position, velocity, and copies memory to GPU

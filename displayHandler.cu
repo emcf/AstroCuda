@@ -147,7 +147,7 @@ void displayHandler::fillOct(octreeSystem& octSystem, int index)
 
 void displayHandler::drawSmoothingLenghs(particleSystem& pSystem)
 {
-    if (DRAW_PARTICLES)
+    if (DRAW_SMOOTHING)
     {
         for (int i = 0; i < N; i++)
         {
