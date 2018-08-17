@@ -149,10 +149,10 @@ __global__ void SPHSolverKernel(deviceQuad* d_quadList, deviceParticle* d_device
                 float rx = neibParticle.particleData[0] - thisParticle.particleData[0];
                 float ry = neibParticle.particleData[1] - thisParticle.particleData[1];
                 float r = sqrt(square(rx) + square(ry) + EPSILON);
-                // Increment density and density deritative. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
+                // Increment density and density derivative. http://users.monash.edu.au/~dprice/SPH/price-spmhd.pdf (Equation 10)
                 dpdh += neibMass * dWdh(r, h);
                 p += neibMass * W(r, h);
-                // Find kernel gradient https://academic.oup.com/mnras/article/471/2/2357/3906602 (Equation 4)
+                // Find weight function gradient https://academic.oup.com/mnras/article/471/2/2357/3906602 (Equation 4)
                 float q = r/h;
                 float tempGradWx = rx * ((1.0f / quartic(h)) * (1.0f/q) * dwdq(q));
                 float tempGradWy = ry * ((1.0f / quartic(h)) * (1.0f/q) * dwdq(q));
